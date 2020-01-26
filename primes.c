@@ -97,7 +97,6 @@ custom_signal_handler (int signalNumber)
 {
     switch (signalNumber){
         case SIGINT:
-             signal (SIGINT, custom_signal_handler); /* Restablish the signal handler for the next occurrence */
              printf ("Caught the Control+C signal. \n");
              report(0);
              exit (EXIT_SUCCESS);
