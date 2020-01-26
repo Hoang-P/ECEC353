@@ -1,6 +1,7 @@
  /* Skeleton code from primes.
   *
   * Author: Naga Kandasamy
+  * Students: Hoang Pham (hdp38) and Nicholas Syrylo (njs76)
   *
   * Date created: June 28, 2018
   * Date updated: January 16, 2020 
@@ -79,18 +80,18 @@ main (int argc, char** argv)
 {
     unsigned long int num;
     num_found = 0;
-	signal (SIGINT, custom_signal_handler);
-	signal (SIGQUIT, custom_signal_handler);
+    signal (SIGINT, custom_signal_handler);
+    signal (SIGQUIT, custom_signal_handler);
 
     printf ("Beginning search for primes between 1 and %lu. \n", LONG_MAX);
     for (num = 1; num < LONG_MAX; num++) {
         if (is_prime (num)) {
             num_found++;
-			report(num);
+            report(num);
             printf ("%lu \n", num);
         }
     }
-	report(0);
+    report(0);
     exit (EXIT_SUCCESS);
 }
 
@@ -101,13 +102,13 @@ custom_signal_handler (int signalNumber)
         case SIGINT:
              signal (SIGINT, custom_signal_handler); /* Restablish the signal handler for the next occurrence */
              printf ("Caught the Control+C signal. \n");
-			 report(0);
+             report(0);
              exit (EXIT_SUCCESS);
 
          case SIGQUIT: 
              printf ("Caught the Quit signal. \n");
              printf ("Going through an orderly shutdown process. \n");
-			 report(0);
+             report(0);
              exit (EXIT_SUCCESS);
 
          default: 
