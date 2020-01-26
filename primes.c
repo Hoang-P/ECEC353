@@ -59,12 +59,9 @@ report (int num)
 	if (num == 0)
 	{
 		printf("Last 5 primes found:\n");
-		for (int i = 0; i < 5; i++)
-		{
-			printf ("%lu \n", buf[i]);
-		}
+		printf ("%lu, %lu, %lu, %lu, %lu\n", buf[0],  buf[1], buf[2], buf[3], buf[4]);
 	}
-	else if (idx != sizeof(buf))
+	else if (idx < 5)
 	{
 		buf[idx] = num;
 		idx++;
