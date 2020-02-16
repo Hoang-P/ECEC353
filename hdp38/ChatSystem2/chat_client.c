@@ -238,7 +238,7 @@ int main(int argc, char **argv)
     msg.control = 2; /* default control value to skip control switch statement */
     sleep(1);        /* Wait for response from server if is kill */
 
-    while (difftime(end_t, start_t) <= 5.01)
+    while (difftime(end_t, start_t) <= 5.1)
     { /* add some time for processes to get heartbeat */
         print_main_menu();
         option = getchar();

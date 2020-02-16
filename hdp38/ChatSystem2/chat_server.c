@@ -58,6 +58,10 @@ int main(int argc, char **argv)
     /* Build the dest_user mq */
     static char dest_user_mq[MESSAGE_LEN];
     int num_clients = 0;
+    /* Skip if client MQ crashed but client is still up */
+    int skip = 0;
+    /* Check for if client cant send */
+    int client_found = 0;
 
     /* Set the default message queue attributes. */
     attr.mq_maxmsg = 10;                  /* Maximum number of messages on queue */
@@ -232,6 +236,13 @@ int main(int argc, char **argv)
             /* Open priv user mq and send */
             if (priv_mq == (mqd_t)-1)
             {
+                for (int i = 0; i < MAX_CLIENTS; i++)
+                {
+                    if (strcmp(connected_clients[i], msg_buffer.priv_user_name) == 0)
+                    {
+                        memset(&connected_clients[i], '\0', sizeof(connected_clients[i])); /* remove user from list if needed */
+                    }
+                }
                 // perror("Could not find private message recipient");
                 snprintf(dest_user_mq, MESSAGE_LEN, "/hdp38_njs76_client_%s", (char *)msg_buffer.user_name);
                 priv_mq = mq_open(dest_user_mq, O_WRONLY);
@@ -266,34 +277,53 @@ int main(int argc, char **argv)
 
         case 1: /* broadcast message */
             // printf("Broadcast message from %s\n", msg_buffer.user_name);
-            /* loop over each client that currently exists. Also ignore the client that's sending the message. */
+            /* Make sure client is in list */
             for (int i = 0; i < MAX_CLIENTS; i++)
             {
-                if (connected_clients[i][0] != 0 && strcmp(connected_clients[i], msg_buffer.user_name) != 0)
+                if (strcmp(connected_clients[i], msg_buffer.user_name) == 0)
                 {
-                    snprintf(dest_user_mq, MESSAGE_LEN, "/hdp38_njs76_client_%s", (char *)connected_clients[i]);
-                    dest_user_mq[strcspn(dest_user_mq, "\n")] = 0; // remove newline from client name
-                    // printf("Sending to mq : %s\n", dest_user_mq);
-                    broadcast_mq = mq_open(dest_user_mq, O_WRONLY);
-
-                    /* Open priv user mq and send */
-                    if (broadcast_mq == (mqd_t)-1)
-                    {
-                        perror("Could not find message recipient");
-                        continue;
-                    }
-
-                    strcpy(server_buffer.sender_name, msg_buffer.user_name);
-                    strcpy(server_buffer.msg, msg_buffer.msg);
-                    if (mq_send(broadcast_mq, (char *)&server_buffer, sizeof(server_buffer), 0) == -1)
-                    {
-                        perror("mq_send");
-                        exit(EXIT_FAILURE);
-                    }
-                    /* printf("Message from %s sent to other person %s.\nContents: %s\n", server_buffer.sender_name, \
-                                                                     connected_clients[i], server_buffer.msg); */
+                    client_found = 1;
+                    break;
                 }
             }
+
+            /* loop over each client that currently exists. Also ignore the client that's sending the message. */
+            if (client_found == 1)
+            {
+                for (int i = 0; i < MAX_CLIENTS; i++)
+                {
+                    if (connected_clients[i][0] != 0 && strcmp(connected_clients[i], msg_buffer.user_name) != 0)
+                    {
+                        snprintf(dest_user_mq, MESSAGE_LEN, "/hdp38_njs76_client_%s", (char *)connected_clients[i]);
+                        dest_user_mq[strcspn(dest_user_mq, "\n")] = 0; // remove newline from client name
+                        // printf("Sending to mq : %s\n", dest_user_mq);
+                        broadcast_mq = mq_open(dest_user_mq, O_WRONLY);
+
+                        /* Open priv user mq and send */
+                        if (broadcast_mq == (mqd_t)-1)
+                        {
+                            perror("Could not find message recipient");
+                            memset(&connected_clients[i], '\0', sizeof(connected_clients[i])); /* clear up that spot for a new user */
+                            skip = 1;
+                        }
+
+                        strcpy(server_buffer.sender_name, msg_buffer.user_name);
+                        strcpy(server_buffer.msg, msg_buffer.msg);
+                        if (skip != 1)
+                        {
+                            if (mq_send(broadcast_mq, (char *)&server_buffer, sizeof(server_buffer), 0) == -1)
+                            {
+                                perror("mq_send");
+                                exit(EXIT_FAILURE);
+                            }
+                        }
+                        skip = 0; /* Change skip variable back to default */
+                        /* printf("Message from %s sent to other person %s.\nContents: %s\n", server_buffer.sender_name, \
+                                                                        connected_clients[i], server_buffer.msg); */
+                    }
+                }
+            }
+            client_found = 0;
             break;
         default:
             // printf("DEBUG: Unknown case for broadcast: %d\n", msg_buffer.broadcast);
