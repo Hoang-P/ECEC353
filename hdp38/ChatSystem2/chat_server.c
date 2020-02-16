@@ -18,6 +18,7 @@
 #define SERVER_NAME  "/hdp38_njs76_chat_server"
 #define MAX_CLIENTS 5
 #define CTRLC 10
+#define HEARTBEAT 20
 
 #include <mqueue.h>
 #include <sys/stat.h>
@@ -36,6 +37,7 @@
  * shut down gracefully. 
  */
 static void custom_signal_handler (int signalNumber);
+static void alarm_handler (int); 
 static sigjmp_buf env;
 
 int 
@@ -49,8 +51,10 @@ main (int argc, char **argv)
     char connected_clients[MAX_CLIENTS][USER_NAME_LEN];
     memset(connected_clients, '\0', sizeof(connected_clients[0][0]) * MAX_CLIENTS * USER_NAME_LEN);
 
+    int alarm_interval = 5;
     mqd_t priv_mq; /* mq for private user */
-    mqd_t broadcast_mq;
+    mqd_t broadcast_mq; /* for broadcasts */
+    mqd_t heartbeat_mq; /* for the heartbeat */
     struct server_msg server_buffer;
     /* Build the dest_user mq */
     static char dest_user_mq[MESSAGE_LEN];
@@ -71,8 +75,9 @@ main (int argc, char **argv)
         perror ("mq_open");
         exit (EXIT_FAILURE);
     }
-    /* Handle Ctrl-C signal */
+    /* Handle signals */
     signal (SIGINT, custom_signal_handler);
+    signal (SIGALRM, alarm_handler);
 
     unsigned int priority;
     //struct mq_attr attr;
@@ -100,14 +105,42 @@ main (int argc, char **argv)
             }
             exit(EXIT_SUCCESS);
         
+        case HEARTBEAT:
+            /* Send message to clients to re-establish a beat */
+            for (int i = 0; i < MAX_CLIENTS; i++) {
+                if (connected_clients[i][0] != 0) { 
+                    snprintf (dest_user_mq, MESSAGE_LEN, "/hdp38_njs76_client_%s", (char *) connected_clients[i]);
+                    dest_user_mq[strcspn(dest_user_mq, "\n")] = 0; // remove newline from client name
+                    printf("Sending to mq : %s\n", dest_user_mq);
+                    heartbeat_mq = mq_open (dest_user_mq, O_WRONLY);
+
+                    /* Open priv user mq and send */
+                    if (heartbeat_mq == (mqd_t)-1) {
+                        perror ("Could not find message recipient");
+                        continue;
+                    }
+
+                    strcpy(server_buffer.sender_name, SERVER_NAME);
+                    // strcpy(server_buffer.msg, msg_buffer.msg);
+                    if (mq_send (heartbeat_mq, (char *) &server_buffer, sizeof (server_buffer), 0) == -1) {
+                        perror ("mq_send");
+                        exit (EXIT_FAILURE);
+                    }
+                }
+            }
+            break;
+        
         default:
             break;
     }
 
 
-
     while (1) {
         /* FIXME: Server code here */
+
+        /* Set the alarm up */
+        alarm (alarm_interval);
+
         /* Get the attributes of the MQ */
         if (mq_getattr (mqd, &attr) == -1) {
             perror ("mq_getattr");
@@ -218,8 +251,8 @@ main (int argc, char **argv)
                             perror ("mq_send");
                             exit (EXIT_FAILURE);
                         }
-                        printf("Message from %s sent to other person %s.\nContents: %s\n", server_buffer.sender_name, \
-                                                                    connected_clients[i], server_buffer.msg);
+                        // printf("Message from %s sent to other person %s.\nContents: %s\n", server_buffer.sender_name, \
+                        //                                             connected_clients[i], server_buffer.msg);
 
                     }
 
@@ -247,4 +280,12 @@ static void
 custom_signal_handler (int signalNumber)
 {
     siglongjmp (env, CTRLC);
+}
+
+static void 
+alarm_handler (int sig)
+{
+    signal (SIGALRM, alarm_handler); /* Restablish handler for next occurrence */
+    siglongjmp (env, HEARTBEAT);
+    return;
 }
