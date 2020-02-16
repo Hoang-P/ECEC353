@@ -64,7 +64,10 @@ static void thread_func (union sigval sv) {
     /* Drain the queue empty */
     while ((nr = mq_receive (*mqdp, msg_buffer, attr.mq_msgsize, NULL)) >= 0) {
         buffer = (struct server_msg *) msg_buffer;
-        printf ("%s: %s\n", buffer-> sender_name, buffer->msg);
+        if (strcmp(buffer->sender_name, SERVER_NAME) != 0) { /* Print if not null message */
+            printf ("%s: %s\n", buffer-> sender_name, buffer->msg);
+        }
+        
     }
     free(msg_buffer);
         
@@ -128,7 +131,7 @@ main (int argc, char **argv)
     strcpy (user_name, argv[1]); /* Get the client user name */
 
     struct client_msg msg;
-    struct client_msg server_msg;
+    //struct client_msg server_msg;
     msg.client_pid = getpid();
     strcpy (msg.user_name, user_name);
     char option, dummy;
@@ -146,7 +149,7 @@ main (int argc, char **argv)
 
     /* Set the default message queue attributes. */
     attr.mq_maxmsg = 10;    /* Maximum number of messages on queue */
-    attr.mq_msgsize = sizeof(server_msg); /* Maximum message size in bytes */
+    attr.mq_msgsize = sizeof(msg); /* Maximum message size in bytes */
     flags = O_RDWR;         /* Create or open the queue for reading and writing */
     flags |= O_CREAT;
     flags |= O_NONBLOCK;
@@ -242,7 +245,7 @@ main (int argc, char **argv)
                 //message[strcspn(message, "\n")] = 0;
                 snprintf(msg.msg, sizeof(msg.msg), "%s", message);
                 snprintf(msg.priv_user_name, sizeof(msg.priv_user_name), "%s", recipient);
-                if (mq_send (mqd_server, (char *) &msg, sizeof (msg), 1) == -1) {
+                if (mq_send (mqd_server, (char *) &msg, sizeof (msg), 0) == -1) {
                     perror ("mq_send");
                     exit (EXIT_FAILURE);
                 }
@@ -278,10 +281,10 @@ custom_signal_handler (int signalNumber)
             sigKill = 1;
             //exit (EXIT_SUCCESS);
             break;
-        case SIGINT:
+        /*case SIGINT:
             sigKill = 1;
             //exit (EXIT_SUCCESS);
-            break;
+            break;*/
          default: 
              break;
 

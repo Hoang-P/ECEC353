@@ -106,12 +106,13 @@ main (int argc, char **argv)
             exit(EXIT_SUCCESS);
         
         case HEARTBEAT:
+            printf("Sending a heartbeat\n");
             /* Send message to clients to re-establish a beat */
             for (int i = 0; i < MAX_CLIENTS; i++) {
                 if (connected_clients[i][0] != 0) { 
                     snprintf (dest_user_mq, MESSAGE_LEN, "/hdp38_njs76_client_%s", (char *) connected_clients[i]);
                     dest_user_mq[strcspn(dest_user_mq, "\n")] = 0; // remove newline from client name
-                    printf("Sending to mq : %s\n", dest_user_mq);
+                    // printf("Sending to mq : %s\n", dest_user_mq);
                     heartbeat_mq = mq_open (dest_user_mq, O_WRONLY);
 
                     /* Open priv user mq and send */
@@ -121,7 +122,8 @@ main (int argc, char **argv)
                     }
 
                     strcpy(server_buffer.sender_name, SERVER_NAME);
-                    // strcpy(server_buffer.msg, msg_buffer.msg);
+                    strcpy(server_buffer.msg, "\0");
+                    
                     if (mq_send (heartbeat_mq, (char *) &server_buffer, sizeof (server_buffer), 0) == -1) {
                         perror ("mq_send");
                         exit (EXIT_FAILURE);
@@ -134,12 +136,12 @@ main (int argc, char **argv)
             break;
     }
 
+    alarm (alarm_interval);
 
     while (1) {
         /* FIXME: Server code here */
 
         /* Set the alarm up */
-        alarm (alarm_interval);
 
         /* Get the attributes of the MQ */
         if (mq_getattr (mqd, &attr) == -1) {
@@ -251,8 +253,8 @@ main (int argc, char **argv)
                             perror ("mq_send");
                             exit (EXIT_FAILURE);
                         }
-                        // printf("Message from %s sent to other person %s.\nContents: %s\n", server_buffer.sender_name, \
-                        //                                             connected_clients[i], server_buffer.msg);
+                        /* printf("Message from %s sent to other person %s.\nContents: %s\n", server_buffer.sender_name, \
+                                                                     connected_clients[i], server_buffer.msg); */
 
                     }
 
@@ -264,7 +266,6 @@ main (int argc, char **argv)
 
         }
 
-        
 
         // if (msg_buffer.control == 2)
         // {
