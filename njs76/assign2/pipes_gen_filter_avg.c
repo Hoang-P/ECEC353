@@ -10,11 +10,24 @@
  * */
 
 
+#include <stdio.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #include <stdlib.h>
-
+#include <errno.h>
 int 
 main (int argc, char **argv)
 {
+    int pfd_njs76[2];
+
+    if pipe(pfd_njs76) == 1) {
+        perror("pipe");
+        exit(EXIT_FAILURE);
+    }
+
+
     /* FIXME: Complete the functionality */
 
     exit (EXIT_SUCCESS);

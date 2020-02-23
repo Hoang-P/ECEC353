@@ -16,7 +16,7 @@
 #define _POSIX_C_SOURCE 1
 
 #define SERVER_NAME "/hdp38_njs76_chat_server"
-#define MAX_CLIENTS 5
+#define MAX_CLIENTS 100
 #define KILL 10
 #define HEARTBEAT 20
 
