@@ -145,15 +145,12 @@ compute_using_pthreads_jacobi (grid_t *grid, int num_threads)
         diff = 0.0;
         num_elements = 0;
 
-        for (i = 1; i < (grid->dim - 1); i++) {
-            row = i;
-            for (j = 0; j < num_threads; j++)
-                pthread_create (&tid[j], &attributes, jacobi, (void *) args_for_thread[j]);
+        for (j = 0; j < num_threads; j++)
+            pthread_create (&tid[j], &attributes, jacobi, (void *) args_for_thread[j]);
 
-            /* Wait for the workers to finish */
-            for(j = 0; j < num_threads; j++)
-                pthread_join (tid[j], NULL);
-        }
+        /* Wait for the workers to finish */
+        for(j = 0; j < num_threads; j++)
+            pthread_join (tid[j], NULL);
         
         /* End of an iteration. Check for convergence. */
         diff = diff/num_elements;
@@ -178,36 +175,40 @@ jacobi (void *args)
     grid_t *grid = args_for_me->grid;
 
     if (args_for_me->tid < (args_for_me->num_threads - 1)) {
-        for (int j = (args_for_me->offset + 1); j < (args_for_me->offset + args_for_me->chunk_size + 1); j++) {
-            args_for_me->old = grid->element[*(args_for_me->row) * grid->dim + j];
-            /* Apply the update rule. */
-            args_for_me->new = 0.25 * ( grid->element[(*(args_for_me->row) - 1) * grid->dim + j] +\
-                                        grid->element[(*(args_for_me->row) + 1) * grid->dim + j] +\
-                                        grid->element[*(args_for_me->row) * grid->dim + (j + 1)] +\
-                                        grid->element[*(args_for_me->row) * grid->dim + (j - 1)] );
-            
-            grid->element[*(args_for_me->row) * grid->dim + j] = args_for_me->new; /* Update the grid-point value. */
-            pthread_mutex_lock(args_for_me->mutex_for_sum);
-            *(args_for_me->diff) += fabs(args_for_me->new - args_for_me->old); /* Calculate the difference in values. */
-            *(args_for_me->num_elements) += 1;
-            pthread_mutex_unlock(args_for_me->mutex_for_sum);
+        for (int i = (args_for_me->offset + 1); i < (args_for_me->offset + args_for_me->chunk_size + 1); i++) {
+            for (int j = 1; j < (grid->dim - 1); j++){
+                args_for_me->old = grid->element[i * grid->dim + j];
+                /* Apply the update rule. */
+                args_for_me->new = 0.25 * ( grid->element[(i - 1) * grid->dim + j] +\
+                                            grid->element[(i + 1) * grid->dim + j] +\
+                                            grid->element[i * grid->dim + (j + 1)] +\
+                                            grid->element[i * grid->dim + (j - 1)] );
+                
+                grid->element[i * grid->dim + j] = args_for_me->new; /* Update the grid-point value. */
+                pthread_mutex_lock(args_for_me->mutex_for_sum);
+                *(args_for_me->diff) += fabs(args_for_me->new - args_for_me->old); /* Calculate the difference in values. */
+                *(args_for_me->num_elements) += 1;
+                pthread_mutex_unlock(args_for_me->mutex_for_sum);
+            }
         }
     }
 
     else { /* This takes care of the number of elements that the final thread must process */
-        for (int j = (args_for_me->offset + 1); j < (grid->dim - 1); j++) {
-            args_for_me->old = grid->element[*(args_for_me->row) * grid->dim + j];
-            /* Apply the update rule. */
-            args_for_me->new = 0.25 * ( grid->element[(*(args_for_me->row) - 1) * grid->dim + j] +\
-                                        grid->element[(*(args_for_me->row) + 1) * grid->dim + j] +\
-                                        grid->element[*(args_for_me->row) * grid->dim + (j + 1)] +\
-                                        grid->element[*(args_for_me->row) * grid->dim + (j - 1)] );
-            
-            grid->element[*(args_for_me->row) * grid->dim + j] = args_for_me->new; /* Update the grid-point value. */
-            pthread_mutex_lock(args_for_me->mutex_for_sum);
-            *(args_for_me->diff) += fabs(args_for_me->new - args_for_me->old); /* Calculate the difference in values. */
-            *(args_for_me->num_elements) += 1;
-            pthread_mutex_unlock(args_for_me->mutex_for_sum);
+        for (int i = (args_for_me->offset + 1); i < (grid->dim - 1); i++) {
+            for (int j = 1; j < (grid->dim - 1); j++){
+                args_for_me->old = grid->element[i * grid->dim + j];
+                /* Apply the update rule. */
+                args_for_me->new = 0.25 * ( grid->element[(i - 1) * grid->dim + j] +\
+                                            grid->element[(i + 1) * grid->dim + j] +\
+                                            grid->element[i * grid->dim + (j + 1)] +\
+                                            grid->element[i * grid->dim + (j - 1)] );
+                
+                grid->element[i * grid->dim + j] = args_for_me->new; /* Update the grid-point value. */
+                pthread_mutex_lock(args_for_me->mutex_for_sum);
+                *(args_for_me->diff) += fabs(args_for_me->new - args_for_me->old); /* Calculate the difference in values. */
+                *(args_for_me->num_elements) += 1;
+                pthread_mutex_unlock(args_for_me->mutex_for_sum);
+            }
         }
     }
 
