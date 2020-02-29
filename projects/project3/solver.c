@@ -16,21 +16,20 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <math.h>
+#include <sys/time.h>
 #include "grid.h" 
 
 /* Shared data structure used by the threads */
 typedef struct args_for_thread_t {
     int tid;                          /* The thread ID */
     int num_threads;                  /* Number of worker threads */
-    int *num_elements;                /* Number of elements in the vectors */
+    int num_elements;                 /* Number of elements in the vectors */
     float old;                        /* Old grid value */
     float new;                        /* New grid value */
-    double *diff;                     /* Grid value difference */
+    double diff;                      /* Grid value difference */
     grid_t *grid;                     /* Grid */
-    int *row;                         /* Current row */
     int offset;                       /* Starting offset for thread within the vectors */
     int chunk_size;                   /* Chunk size */
-    pthread_mutex_t *mutex_for_sum;   /* Location of the lock variable protecting sum */
 } ARGS_FOR_THREAD;
 
 extern int compute_gold (grid_t *);
@@ -66,9 +65,14 @@ main (int argc, char **argv)
     /* Grid 2 should have the same initial conditions as Grid 1. */
     grid_t *grid_2 = copy_grid (grid_1); 
 
+    /* Compute time */
+	struct timeval start, stop, start1, stop1;	
+
 	/* Compute the reference solution using the single-threaded version. */
 	printf ("\nUsing the single threaded version to solve the grid\n");
+    gettimeofday (&start, NULL);
 	int num_iter = compute_gold (grid_1);
+    gettimeofday (&stop, NULL);
 	printf ("Convergence achieved after %d iterations\n", num_iter);
     /* Print key statistics for the converged values. */
 	printf ("Printing statistics for the interior grid points\n");
@@ -76,10 +80,12 @@ main (int argc, char **argv)
 #ifdef DEBUG
     print_grid (grid_1);
 #endif
-	
+
 	/* Use pthreads to solve the equation using the jacobi method. */
 	printf ("\nUsing pthreads to solve the grid using the jacobi method\n");
+    gettimeofday (&start1, NULL);
 	num_iter = compute_using_pthreads_jacobi (grid_2, num_threads);
+    gettimeofday (&stop1, NULL);
 	printf ("Convergence achieved after %d iterations\n", num_iter);			
     printf ("Printing statistics for the interior grid points\n");
 	print_stats (grid_2);
@@ -97,6 +103,11 @@ main (int argc, char **argv)
 	free ((void *) grid_2->element);	
 	free ((void *) grid_2);
 
+    printf ("\n");
+    printf ("Ref Execution time = %fs\n", (float) (stop.tv_sec - start.tv_sec + (stop.tv_usec - start.tv_usec)/(float) 1000000));
+    printf ("Thread Execution time = %fs\n", (float) (stop1.tv_sec - start1.tv_sec + (stop1.tv_usec - start1.tv_usec)/(float) 1000000));
+	printf ("\n");
+
 	exit (EXIT_SUCCESS);
 }
 
@@ -110,11 +121,8 @@ compute_using_pthreads_jacobi (grid_t *grid, int num_threads)
         exit (EXIT_FAILURE);
     }
 
-    pthread_attr_t attributes;                  /* Thread attributes */
-    pthread_mutex_t mutex_for_sum;              /* Lock for the shared variable sum */
-    
+    pthread_attr_t attributes;                  /* Thread attributes */    
     pthread_attr_init (&attributes);            /* Initialize the thread attributes to the default values */
-    pthread_mutex_init (&mutex_for_sum, NULL);  /* Initialize the mutex */
 
     ARGS_FOR_THREAD **args_for_thread;
     args_for_thread = malloc (sizeof (ARGS_FOR_THREAD) * num_threads);
@@ -122,7 +130,7 @@ compute_using_pthreads_jacobi (grid_t *grid, int num_threads)
 
     int num_iter = 0;
 	int done = 0;
-    int i, j, row;
+    int i, j;
 	double diff;
 	// float old = 0.0, new = 0.0;
     float eps = 1e-2; /* Convergence criteria. */
@@ -132,25 +140,30 @@ compute_using_pthreads_jacobi (grid_t *grid, int num_threads)
         args_for_thread[i] = (ARGS_FOR_THREAD *) malloc (sizeof (ARGS_FOR_THREAD));
         args_for_thread[i]->tid = i;
         args_for_thread[i]->num_threads = num_threads;
-        args_for_thread[i]->num_elements = &num_elements;
-        args_for_thread[i]->diff = &diff;
+        args_for_thread[i]->num_elements = 0;
+        args_for_thread[i]->diff = 0.0;
         args_for_thread[i]->grid = grid;
-        args_for_thread[i]->row = &row;
         args_for_thread[i]->offset = i * chunk_size;
         args_for_thread[i]->chunk_size = chunk_size;
-        args_for_thread[i]->mutex_for_sum = &mutex_for_sum;
     }
 
     while (!done) {
         diff = 0.0;
         num_elements = 0;
 
-        for (j = 0; j < num_threads; j++)
-            pthread_create (&tid[j], &attributes, jacobi, (void *) args_for_thread[j]);
+        for (i = 0; i < num_threads; i++)
+            pthread_create (&tid[i], &attributes, jacobi, (void *) args_for_thread[i]);
 
         /* Wait for the workers to finish */
-        for(j = 0; j < num_threads; j++)
-            pthread_join (tid[j], NULL);
+        for(i = 0; i < num_threads; i++) {
+            pthread_join (tid[i], NULL);
+
+            diff += args_for_thread[i]->diff;
+            args_for_thread[i]->diff = 0.0;
+
+            num_elements += args_for_thread[i]->num_elements;
+            args_for_thread[i]->num_elements = 0;
+        }
         
         /* End of an iteration. Check for convergence. */
         diff = diff/num_elements;
@@ -185,10 +198,10 @@ jacobi (void *args)
                                             grid->element[i * grid->dim + (j - 1)] );
                 
                 grid->element[i * grid->dim + j] = args_for_me->new; /* Update the grid-point value. */
-                pthread_mutex_lock(args_for_me->mutex_for_sum);
-                *(args_for_me->diff) += fabs(args_for_me->new - args_for_me->old); /* Calculate the difference in values. */
-                *(args_for_me->num_elements) += 1;
-                pthread_mutex_unlock(args_for_me->mutex_for_sum);
+                // pthread_mutex_lock(args_for_me->mutex_for_sum);
+                args_for_me->diff += fabs(args_for_me->new - args_for_me->old); /* Calculate the difference in values. */
+                args_for_me->num_elements += 1;
+                // pthread_mutex_unlock(args_for_me->mutex_for_sum);
             }
         }
     }
@@ -204,10 +217,10 @@ jacobi (void *args)
                                             grid->element[i * grid->dim + (j - 1)] );
                 
                 grid->element[i * grid->dim + j] = args_for_me->new; /* Update the grid-point value. */
-                pthread_mutex_lock(args_for_me->mutex_for_sum);
-                *(args_for_me->diff) += fabs(args_for_me->new - args_for_me->old); /* Calculate the difference in values. */
-                *(args_for_me->num_elements) += 1;
-                pthread_mutex_unlock(args_for_me->mutex_for_sum);
+                // pthread_mutex_lock(args_for_me->mutex_for_sum);
+                args_for_me->diff += fabs(args_for_me->new - args_for_me->old); /* Calculate the difference in values. */
+                args_for_me->num_elements += 1;
+                // pthread_mutex_unlock(args_for_me->mutex_for_sum);
             }
         }
     }
