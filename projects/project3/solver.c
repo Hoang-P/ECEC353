@@ -9,6 +9,8 @@
  * If you wish to see debug info, add the -D DEBUG option when compiling the code.
  */
 
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <string.h>
 #include <malloc.h>
@@ -28,8 +30,11 @@ typedef struct args_for_thread_t {
     float new;                        /* New grid value */
     double diff;                      /* Grid value difference */
     grid_t *grid;                     /* Grid */
-    int offset;                       /* Starting offset for thread within the vectors */
-    int chunk_size;                   /* Chunk size */
+    grid_t *grid2;                     /* Grid */
+    pthread_barrier_t *barrier;
+    double *global_diff;
+    int done;
+    int *num_iter;
 } ARGS_FOR_THREAD;
 
 extern int compute_gold (grid_t *);
@@ -126,59 +131,56 @@ compute_using_pthreads_jacobi (grid_t *grid, int num_threads)
 
     ARGS_FOR_THREAD **args_for_thread;
     args_for_thread = malloc (sizeof (ARGS_FOR_THREAD) * num_threads);
-    int chunk_size = (int) floor ((float) (grid->dim - 1)/(float) num_threads); // Compute the chunk size
+    // int chunk_size = (int) floor ((float) (grid->dim - 1)/(float) num_threads); // Compute the chunk size
 
-    int num_iter = 0;
-	int done = 0;
+    int *num_iter = (int *) malloc (num_threads * sizeof (int));
+    if (num_iter == NULL) {
+        perror ("Malloc");
+        return 1;
+    }
+    memset(num_iter, 0, num_threads);
     int i, j;
-	double diff;
-	// float old = 0.0, new = 0.0;
-    float eps = 1e-2; /* Convergence criteria. */
-    int num_elements;
+    grid_t *grid2 = copy_grid(grid);
+    pthread_barrier_t *barrier = (pthread_barrier_t *)malloc(sizeof(pthread_barrier_t *));
+    pthread_barrier_init(barrier,NULL,num_threads);
+    double *diff = (double *) malloc (num_threads * sizeof (double));
+    if (diff == NULL) {
+        perror ("Malloc");
+        return 1;
+    }
+    
+    // print_grid(grid);
 
     for (i = 0; i < num_threads; i++) {
         args_for_thread[i] = (ARGS_FOR_THREAD *) malloc (sizeof (ARGS_FOR_THREAD));
         args_for_thread[i]->tid = i;
         args_for_thread[i]->num_threads = num_threads;
-        args_for_thread[i]->num_elements = 0;
+        args_for_thread[i]->num_elements = (grid->dim - 1)*(grid->dim - 1);
         args_for_thread[i]->diff = 0.0;
         args_for_thread[i]->grid = grid;
-        args_for_thread[i]->offset = i * chunk_size;
-        args_for_thread[i]->chunk_size = chunk_size;
+        args_for_thread[i]->grid2 = grid2;
+        args_for_thread[i]->barrier = barrier;
+        // args_for_thread[i]->barrier2 = barrier2;
+        args_for_thread[i]->global_diff = diff;
+        args_for_thread[i]->done = 0;
+        args_for_thread[i]->num_iter = num_iter;
+        pthread_create (&tid[i], &attributes, jacobi, (void *) args_for_thread[i]);
     }
 
-    while (!done) {
-        diff = 0.0;
-        num_elements = 0;
-
-        for (i = 0; i < num_threads; i++)
-            pthread_create (&tid[i], &attributes, jacobi, (void *) args_for_thread[i]);
-
-        /* Wait for the workers to finish */
-        for(i = 0; i < num_threads; i++) {
-            pthread_join (tid[i], NULL);
-
-            diff += args_for_thread[i]->diff;
-            args_for_thread[i]->diff = 0.0;
-
-            num_elements += args_for_thread[i]->num_elements;
-            args_for_thread[i]->num_elements = 0;
-        }
-        
-        /* End of an iteration. Check for convergence. */
-        diff = diff/num_elements;
-        printf ("Iteration %d. DIFF: %f.\n", num_iter, diff);
-        num_iter++;
-			  
-        if (diff < eps) 
-            done = 1;
-    }
+    for (i = 0; i < num_threads; i++)
+        pthread_join (tid[i], NULL);
 
     /* Free data structures */
     for(j = 0; j < num_threads; j++)
         free ((void *) args_for_thread[j]);
 
-    return num_iter;
+    int final_iter = num_iter[0];
+    // for(i = 0; i < num_threads; i++)
+    // {
+    //     final_iter += num_iter[i];
+    // }
+        
+    return final_iter;
 }
 
 void *
@@ -186,43 +188,48 @@ jacobi (void *args)
 {
     ARGS_FOR_THREAD *args_for_me = (ARGS_FOR_THREAD *) args; /* Typecast the argument to a pointer the the ARGS_FOR_THREAD structure */
     grid_t *grid = args_for_me->grid;
+    grid_t *grid2 = args_for_me->grid2;
+    float eps = 1e-4;
+    double total;
+    int pingpong = 1;
 
-    if (args_for_me->tid < (args_for_me->num_threads - 1)) {
-        for (int i = (args_for_me->offset + 1); i < (args_for_me->offset + args_for_me->chunk_size + 1); i++) {
-            for (int j = 1; j < (grid->dim - 1); j++){
-                args_for_me->old = grid->element[i * grid->dim + j];
+    while(!args_for_me->done)
+    {
+        total = 0.0;
+        args_for_me->diff = 0.0;
+        for (int i = (args_for_me->tid) + 1; i < (grid->dim - 1); i += args_for_me->num_threads) {
+            for (int j = 1; j < (grid->dim - 1); j++) {
+                args_for_me->old = pingpong == 1 ? (grid->element[i * grid->dim + j]) : (grid2->element[i * grid2->dim + j]);
                 /* Apply the update rule. */
-                args_for_me->new = 0.25 * ( grid->element[(i - 1) * grid->dim + j] +\
-                                            grid->element[(i + 1) * grid->dim + j] +\
-                                            grid->element[i * grid->dim + (j + 1)] +\
-                                            grid->element[i * grid->dim + (j - 1)] );
+                args_for_me->new = pingpong == 1 ? ( 0.25 * (grid->element[(i - 1) * grid->dim + j] +\
+                                                        grid->element[(i + 1) * grid->dim + j] +\
+                                                        grid->element[i * grid->dim + (j + 1)] +\
+                                                        grid->element[i * grid->dim + (j - 1)] )):\
+                                              ( 0.25 * (grid2->element[(i - 1) * grid2->dim + j] +\
+                                                        grid2->element[(i + 1) * grid2->dim + j] +\
+                                                        grid2->element[i * grid2->dim + (j + 1)] +\
+                                                        grid2->element[i * grid2->dim + (j - 1)] ));
                 
-                grid->element[i * grid->dim + j] = args_for_me->new; /* Update the grid-point value. */
-                // pthread_mutex_lock(args_for_me->mutex_for_sum);
+                /* Update the grid-point value. */
+                if (pingpong)
+                    grid2->element[i * grid2->dim + j] = args_for_me->new;
+                else
+                    grid->element[i * grid->dim + j] = args_for_me->new;
+
                 args_for_me->diff += fabs(args_for_me->new - args_for_me->old); /* Calculate the difference in values. */
-                args_for_me->num_elements += 1;
-                // pthread_mutex_unlock(args_for_me->mutex_for_sum);
             }
         }
-    }
 
-    else { /* This takes care of the number of elements that the final thread must process */
-        for (int i = (args_for_me->offset + 1); i < (grid->dim - 1); i++) {
-            for (int j = 1; j < (grid->dim - 1); j++){
-                args_for_me->old = grid->element[i * grid->dim + j];
-                /* Apply the update rule. */
-                args_for_me->new = 0.25 * ( grid->element[(i - 1) * grid->dim + j] +\
-                                            grid->element[(i + 1) * grid->dim + j] +\
-                                            grid->element[i * grid->dim + (j + 1)] +\
-                                            grid->element[i * grid->dim + (j - 1)] );
-                
-                grid->element[i * grid->dim + j] = args_for_me->new; /* Update the grid-point value. */
-                // pthread_mutex_lock(args_for_me->mutex_for_sum);
-                args_for_me->diff += fabs(args_for_me->new - args_for_me->old); /* Calculate the difference in values. */
-                args_for_me->num_elements += 1;
-                // pthread_mutex_unlock(args_for_me->mutex_for_sum);
-            }
-        }
+        args_for_me->global_diff[args_for_me->tid] = args_for_me->diff;
+        // printf("%f\n", args_for_me->global_diff[args_for_me->tid]);
+        args_for_me->num_iter[args_for_me->tid] += 1;
+        pingpong = !pingpong;
+        pthread_barrier_wait(args_for_me->barrier);
+        for(int i = 0; i < args_for_me->num_threads; i++)
+            total += args_for_me->global_diff[i];
+        total = total/args_for_me->num_elements;
+        if (total < eps)
+            args_for_me->done = 1;
     }
 
     pthread_exit ((void *)0);
@@ -343,8 +350,3 @@ grid_mse (grid_t *grid_1, grid_t *grid_2)
                    
     return mse/num_elem; 
 }
-
-
-
-		
-

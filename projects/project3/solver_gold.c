@@ -12,7 +12,7 @@ compute_gold (grid_t *grid)
     int i, j;
 	double diff;
 	float old, new; 
-    float eps = 1e-2; /* Convergence criteria. */
+    float eps = 1e-4; /* Convergence criteria. */
     int num_elements; 
 	
 	while(!done) { /* While we have not converged yet. */
@@ -22,7 +22,9 @@ compute_gold (grid_t *grid)
         for (i = 1; i < (grid->dim - 1); i++) {
             for (j = 1; j < (grid->dim - 1); j++) {
                 old = grid->element[i * grid->dim + j]; /* Store old value of grid point. */
-                /* Apply the update rule. */	
+                // if (i == 1)
+                //     printf("%f\n", old);
+                /* Apply the update rule. */
                 new = 0.25 * (grid->element[(i - 1) * grid->dim + j] +\
                               grid->element[(i + 1) * grid->dim + j] +\
                               grid->element[i * grid->dim + (j + 1)] +\
@@ -36,7 +38,7 @@ compute_gold (grid_t *grid)
 		
         /* End of an iteration. Check for convergence. */
         diff = diff/num_elements;
-        printf ("Iteration %d. DIFF: %f.\n", num_iter, diff);
+        // printf ("Iteration %d. DIFF: %f.\n", num_iter, diff);
         num_iter++;
 			  
         if (diff < eps) 
