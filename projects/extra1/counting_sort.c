@@ -264,16 +264,29 @@ counting_sort (void *args)
     memset(args_for_me->local_bin, 0, num_bins);
     int idx = 0;
 
-    // memset(bin, 0, num_bins); /* Initialize histogram bins to zero */
-    for (int i = args_for_me->tid; i < args_for_me->num_elements; i += args_for_me->num_threads)
-            args_for_me->thread_bin[args_for_me->tid * num_bins + args_for_me->input[i]] += 1;
+    if (args_for_me->tid < (args_for_me->num_threads - 1)) {
+        for (int i = args_for_me->offset; i < (args_for_me->offset + args_for_me->chunk_size); i++)
+            args_for_me->thread_bin[args_for_me->tid * num_bins + args_for_me->input[i]]++;
+    }
+    else { /* This takes care of the number of elements that the final thread must process */
+        for (int i = args_for_me->offset; i < args_for_me->num_elements; i++)
+            args_for_me->thread_bin[args_for_me->tid * num_bins + args_for_me->input[i]]++;
+    }
 
     pthread_barrier_wait(args_for_me->barrier);
-    for (int i = args_for_me->tid; i < num_bins; i += args_for_me->num_threads)
+    if (args_for_me->tid < (args_for_me->num_threads - 1)) 
     {
-        for (int j = 0; j < args_for_me->num_threads; j++)
-            args_for_me->bin[i] += args_for_me->thread_bin[j * num_bins + i];
+        for (int i = args_for_me->offset; i < (args_for_me->offset + args_for_me->chunk_size); i++)
+            for (int j = 0; j < args_for_me->num_threads; j++)
+                args_for_me->bin[i] += args_for_me->thread_bin[j * num_bins + i];
     }
+    else
+    {
+        for (int i = args_for_me->offset; i < num_bins; i++)
+            for (int j = 0; j < args_for_me->num_threads; j++)
+                args_for_me->bin[i] += args_for_me->thread_bin[j * num_bins + i];
+    }
+    
 
     pthread_barrier_wait(args_for_me->barrier2);
     for (int i = 0; i < args_for_me->offset;i++)
