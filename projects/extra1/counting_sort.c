@@ -38,7 +38,9 @@ typedef struct args_for_thread_t {
     // int *lock;                        /* Locks */
     int range;                        /* Range */
     int offset;                       /* Starting offset for thread within the vectors */
+    int ele_offset;
     int chunk_size;                   /* Chunk size */
+    int ele_chunk;
     pthread_mutex_t *mutex_for_sum;   /* Location of the lock variable protecting sum */
     pthread_barrier_t *barrier;
     pthread_barrier_t *barrier2;
@@ -225,6 +227,7 @@ compute_using_pthreads (int *input_array, int *sorted_array, int num_elements, i
     ARGS_FOR_THREAD **args_for_thread;
     args_for_thread = malloc (sizeof (ARGS_FOR_THREAD) * num_threads);
     int chunk_size = (int) floor ((float) num_bins/(float) num_threads); // Compute the chunk size
+    int ele_chunk = (int) floor ((float) num_elements/(float) num_threads); // Compute the chunk size for elements
     for (i = 0; i < num_threads; i++) {
         args_for_thread[i] = (ARGS_FOR_THREAD *) malloc (sizeof (ARGS_FOR_THREAD));
         args_for_thread[i]->tid = i;
@@ -239,7 +242,9 @@ compute_using_pthreads (int *input_array, int *sorted_array, int num_elements, i
         args_for_thread[i]->barrier = barrier;
         args_for_thread[i]->barrier2 = barrier2;
         args_for_thread[i]->offset = i * chunk_size;
+        args_for_thread[i]->ele_offset = i * ele_chunk;
         args_for_thread[i]->chunk_size = chunk_size;
+        args_for_thread[i]->ele_chunk = ele_chunk;
         pthread_create (&tid[i], &attributes, counting_sort, (void *) args_for_thread[i]);
     }
 
@@ -265,11 +270,11 @@ counting_sort (void *args)
     int idx = 0;
 
     if (args_for_me->tid < (args_for_me->num_threads - 1)) {
-        for (int i = args_for_me->offset; i < (args_for_me->offset + args_for_me->chunk_size); i++)
+        for (int i = args_for_me->ele_offset; i < (args_for_me->ele_offset + args_for_me->ele_chunk); i++)
             args_for_me->thread_bin[args_for_me->tid * num_bins + args_for_me->input[i]]++;
     }
     else { /* This takes care of the number of elements that the final thread must process */
-        for (int i = args_for_me->offset; i < args_for_me->num_elements; i++)
+        for (int i = args_for_me->ele_offset; i < args_for_me->num_elements; i++)
             args_for_me->thread_bin[args_for_me->tid * num_bins + args_for_me->input[i]]++;
     }
 
