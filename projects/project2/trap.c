@@ -21,6 +21,7 @@
 #include <float.h>
 #include <time.h>
 #include <pthread.h>
+#include <sys/time.h>
 
 /* Shared data structure used by the threads */
 typedef struct args_for_thread_t {
@@ -52,6 +53,9 @@ main (int argc, char **argv)
         exit (EXIT_FAILURE);
     }
 
+    /* Compute time */
+	struct timeval start, stop, start1, stop1;	
+
     float a = atoi (argv[1]); /* Lower limit */
 	float b = atof (argv[2]); /* Upper limit */
 	float n = atof (argv[3]); /* Number of trapezoids */
@@ -59,13 +63,22 @@ main (int argc, char **argv)
 	float h = (b - a)/(float) n; /* Base of each trapezoid */  
 	printf ("The base of the trapezoid is %f\n", h);
 
+    gettimeofday (&start, NULL);
 	double reference = compute_gold (a, b, n, h);
+    gettimeofday (&stop, NULL);
     printf ("Reference solution computed using single-threaded version = %f\n", reference);
 
 	/* Write this function to complete the trapezoidal rule using pthreads. */
     int num_threads = atoi (argv[4]); /* Number of threads */
+    gettimeofday (&start1, NULL);
 	double pthread_result = compute_using_pthreads (a, b, n, h, num_threads);
+    gettimeofday (&stop1, NULL);
 	printf ("Solution computed using %d threads = %f\n", num_threads, pthread_result);
+
+    printf ("\n");
+    printf ("Ref Execution time = %fs\n", (float) (stop.tv_sec - start.tv_sec + (stop.tv_usec - start.tv_usec)/(float) 1000000));
+    printf ("Thread Execution time = %fs\n", (float) (stop1.tv_sec - start1.tv_sec + (stop1.tv_usec - start1.tv_usec)/(float) 1000000));
+    printf ("\n");
 
     exit (EXIT_SUCCESS);
 } 
