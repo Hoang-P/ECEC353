@@ -16,7 +16,7 @@
 #include <math.h>
 #include <limits.h>
 #include <pthread.h>
-#include <semaphore.h>
+#include <malloc.h>
 
 /* Do not change the range value. */
 #define MIN_VALUE 0 
@@ -34,18 +34,15 @@ typedef struct args_for_thread_t {
     int *input;                       /* Input array */
     int *sorted;                      /* Sorted array */
     int *bin;                         /* Bin */
-    int *local_bin;                         /* Bin */
-    // int *lock;                        /* Locks */
+    int *local_bin;                   /* Bin */
     int range;                        /* Range */
     int offset;                       /* Starting offset for thread within the vectors */
     int ele_offset;
     int chunk_size;                   /* Chunk size */
     int ele_chunk;
-    pthread_mutex_t *mutex_for_sum;   /* Location of the lock variable protecting sum */
     pthread_barrier_t *barrier;
     pthread_barrier_t *barrier2;
     int *thread_bin;
-    sem_t *lock;
 } ARGS_FOR_THREAD;
 
 int compute_gold (int *, int *, int, int);
@@ -197,10 +194,6 @@ compute_using_pthreads (int *input_array, int *sorted_array, int num_elements, i
 
     pthread_attr_t attributes;                  /* Thread attributes */
     pthread_attr_init (&attributes);            /* Initialize the thread attributes to the default values */
-
-    pthread_mutex_t *mutex_for_sum = (pthread_mutex_t *) malloc (sizeof (pthread_mutex_t) * num_threads);   /* Lock for the shared variable sum */
-    for (i = 0; i < MAX_VALUE; i++)
-        pthread_mutex_init (&mutex_for_sum[i], NULL);
     
     int num_bins = range + 1;
     int *bin = (int *) malloc (num_bins * sizeof (int));
@@ -217,10 +210,9 @@ compute_using_pthreads (int *input_array, int *sorted_array, int num_elements, i
     }
     memset(thread_bin, 0, num_threads * num_bins); /* Initialize histogram bins to zero */
 
+    /* Create barriers */
     pthread_barrier_t *barrier = (pthread_barrier_t *)malloc(sizeof(pthread_barrier_t *));
     pthread_barrier_init(barrier,NULL,num_threads);
-
-
     pthread_barrier_t *barrier2 = (pthread_barrier_t *)malloc(sizeof(pthread_barrier_t *));
     pthread_barrier_init(barrier2,NULL,num_threads);
 
