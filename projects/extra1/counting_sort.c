@@ -261,6 +261,7 @@ counting_sort (void *args)
     memset(args_for_me->local_bin, 0, num_bins);
     int idx = 0;
 
+    /* Create local histogram for binning */
     if (args_for_me->tid < (args_for_me->num_threads - 1)) {
         for (int i = args_for_me->ele_offset; i < (args_for_me->ele_offset + args_for_me->ele_chunk); i++)
             args_for_me->thread_bin[args_for_me->tid * num_bins + args_for_me->input[i]]++;
@@ -270,6 +271,7 @@ counting_sort (void *args)
             args_for_me->thread_bin[args_for_me->tid * num_bins + args_for_me->input[i]]++;
     }
 
+    /* Wait for bins to finish and add to global bin in chunks and in parallel */
     pthread_barrier_wait(args_for_me->barrier);
     if (args_for_me->tid < (args_for_me->num_threads - 1)) 
     {
@@ -284,7 +286,7 @@ counting_sort (void *args)
                 args_for_me->bin[i] += args_for_me->thread_bin[j * num_bins + i];
     }
     
-
+    /* Sort the array in chunks for speedup */
     pthread_barrier_wait(args_for_me->barrier2);
     for (int i = 0; i < args_for_me->offset;i++)
         idx += args_for_me->bin[i];
